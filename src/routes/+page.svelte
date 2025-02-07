@@ -9,8 +9,8 @@
   import Measurer from '$lib/Measurer.svelte'
 </script>
 
-<p class="notice" style="margin-top:0">
-  Select an image, specify reference points and a reference length (tip: use a ruler!), then click along your pet's spine to measure it. For more accurate results, use a top-down image.
+<p class="my-4 mx-20 pb-4">
+  Select an image, specify reference points and a reference length (tip: use a ruler!), then click along your pet's spine to measure it. For more accurate results, use an overhead image.
 </p>
 
 <Measurer />

@@ -254,78 +254,69 @@
   }
 </script>
 
-<div class="controls">
-  <div class="control-row">
-    <input
-      bind:this={fileInput}
-      type="file"
-      accept="image/*"
-      on:change={handleFileSelect}
-      aria-label="Choose image file"
-    />
-  </div>
+<div class="flex flex-col md:flex-row md:justify-between gap-4 items-center">
+  <input
+    bind:this={fileInput}
+    type="file"
+    class="file-input file-input-bordered file-input-primary w-full max-w-xs"
+    accept="image/*"
+    on:change={handleFileSelect}
+    aria-label="Choose image file"
+  />
 
-  <div class="control-row">
-    <button disabled>
+  <div class="flex gap-2">
+    <button class="btn btn-primary" disabled>
       Mode: {currentPathType}
     </button>
-    <button on:click={clearPaths}>Reset</button>
-  </div>
-
-  <div class="control-row">
-    <label for="reference-length">Reference Length (inches):</label>
-    <input
-      id="reference-length"
-      type="number"
-      min="0"
-      step="0.125"
-      bind:value={referenceLengthInches}
-      placeholder="Enter length"
-    />
-  </div>
-
-  <div class="control-row">
-    <strong>Total length:</strong>
-    {#if currentMeasurement}
-      {currentMeasurement} inches
-    {:else}
-      <em>
-        {#if referenceLengthInches && referenceDistance}
-          Add points in measurement mode
-        {:else if referenceLengthInches}
-          Add reference points
-        {:else}
-          Set the reference length
-        {/if}
-      </em>
-    {/if}
+    <button class="btn btn-secondary" on:click={clearPaths}>Reset</button>
   </div>
 </div>
 
-<div class="canvas-container" bind:this={canvasContainer}>
+<div class="card bg-base-200 shadow mt-4">
+  <div class="card-body p-6">
+    <div class="stats bg-base-100 shadow-sm w-full">
+
+      <!-- Length readout -->
+      <div class="stat">
+        <div class="stat-title text-base-content/70">Total Length</div>
+        {#if currentMeasurement}
+          <div class="stat-value text-primary">{currentMeasurement}<span class="text-lg ml-1">inches</span></div>
+        {:else}
+          <div class="stat-desc text-base max-w-[200px]">
+            {#if referenceLengthInches && referenceDistance}
+              Add points in measurement mode
+            {:else if referenceLengthInches}
+              Add reference points
+            {:else}
+              Set the reference length
+            {/if}
+          </div>
+        {/if}
+      </div>
+      
+      <!-- Reference length -->
+      <div class="stat">
+        <div class="stat-title text-base-content/70">Reference Length</div>
+          <div class="stat-value p-0">
+            <input
+              id="reference-length"
+              type="number"
+              min="0"
+              step="0.125"
+              bind:value={referenceLengthInches}
+              placeholder="Enter length"
+              class="input input-bordered w-32 h-10"
+            />
+            <span class="text-lg ml-1">inches</span>
+          </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+
+<div class="w-full my-4 border border-gray-300" bind:this={canvasContainer}>
   <canvas id="canvas"></canvas>
 </div>
-
-<style>
-  .canvas-container {
-    width: 100%;
-    margin: 1rem 0;
-    border: 1px solid #ccc;
-  }
-  .controls {
-    margin-bottom: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-  .control-row {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-  }
-  button {
-    padding-left: 1rem;
-    padding-right: 1rem;
-  }
-</style>
-
