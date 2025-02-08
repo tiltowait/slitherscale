@@ -10,13 +10,22 @@
   } from 'fabric'
 
   type PathType = 'reference' | 'measurement'
+  type Unit = 'in' | 'cm' | 'mm' | 'fur'
+
+  const conversions: Record<Unit, string> = {
+    'in': 'inches',
+    'cm': 'centimeters',
+    'mm': 'millimeters',
+    'fur': 'furlongs',
+  }
 
   let fileInput: HTMLInputElement
   let canvas: Canvas
   let currentPathType: PathType = 'reference'
+  let currentUnit: Unit = 'in'
   let canvasContainer: HTMLDivElement
   let referencePointCount = 0
-  let referenceLengthInches: number | null = null
+  let referenceLength: number | null = null
   let referenceDistance: number | null = null
   let scaleFactor: number | null = null
   let currentMeasurement: string | null = null
@@ -112,7 +121,8 @@
       return total + calculateDistance(pathPoints[index - 1], point)
     }, 0)
 
-    return (distance * scaleFactor).toFixed(2)
+    const measurement = distance * scaleFactor
+    return measurement.toFixed(2)
   }
 
   function handleCanvasClick(event: { e: MouseEvent }) {
@@ -163,8 +173,8 @@
         referenceDistance = calculateDistance(pathPoints[0], pathPoints[1])
 
         // Update scale factor if reference length is set
-        if (referenceLengthInches) {
-          scaleFactor = referenceLengthInches / referenceDistance
+        if (referenceLength) {
+          scaleFactor = referenceLength / referenceDistance
         }
 
         referencePointCount++
@@ -224,7 +234,7 @@
     currentGroup = null
     pathPoints = []
     referencePointCount = 0
-    referenceLengthInches = null
+    referenceLength = null
     referenceDistance = null
     scaleFactor = null
     currentMeasurement = null
@@ -242,8 +252,8 @@
     }
   }
 
-  $: if (referenceLengthInches && referenceDistance) {
-    scaleFactor = referenceLengthInches / referenceDistance
+  $: if (referenceLength && referenceDistance) {
+    scaleFactor = referenceLength / referenceDistance
     if (currentPathType !== 'measurement') {
       switchPathType()
     }
@@ -274,18 +284,21 @@
 
 <div class="card bg-base-200 shadow mt-4">
   <div class="card-body p-6">
-    <div class="stats bg-base-100 shadow-sm w-full">
+    <!-- Add flex-col on mobile, row on larger screens -->
+    <div class="stats bg-base-100 shadow-sm w-full stats-vertical lg:stats-horizontal">
 
-      <!-- Length readout -->
-      <div class="stat">
+      <!-- Length readout - full width on mobile -->
+      <div class="stat w-full lg:w-auto order-2 lg:order-1">
         <div class="stat-title text-base-content/70">Total Length</div>
         {#if currentMeasurement}
-          <div class="stat-value text-primary">{currentMeasurement}<span class="text-lg ml-1">inches</span></div>
+          <div class="stat-value text-primary">
+            {currentMeasurement}<span class="text-lg ml-1">{conversions[currentUnit]}</span>
+          </div>
         {:else}
           <div class="stat-desc text-base max-w-[200px]">
-            {#if referenceLengthInches && referenceDistance}
+            {#if referenceLength && referenceDistance}
               Add points in measurement mode
-            {:else if referenceLengthInches}
+            {:else if referenceLength}
               Add reference points
             {:else}
               Set the reference length
@@ -293,30 +306,39 @@
           </div>
         {/if}
       </div>
-      
-      <!-- Reference length -->
-      <div class="stat">
+
+      <!-- Reference length and unit selector - full width on mobile -->
+      <div class="stat w-full lg:w-auto order-1 lg:order-2">
         <div class="stat-title text-base-content/70">Reference Length</div>
-          <div class="stat-value p-0">
-            <input
-              id="reference-length"
-              type="number"
-              min="0"
-              step="0.125"
-              bind:value={referenceLengthInches}
-              placeholder="Enter length"
-              class="input input-bordered w-32 h-10"
-            />
-            <span class="text-lg ml-1">inches</span>
+        <div class="flex flex-wrap items-center gap-2">
+          <input
+            id="reference-length"
+            type="number"
+            min="0"
+            step="0.125"
+            bind:value={referenceLength}
+            placeholder="Enter length"
+            class="input input-bordered w-32"
+          />
+          <div class="join bg-base-200 rounded-lg">
+            {#each Object.entries(conversions) as [unit, label]}
+              <button 
+                class="join-item btn btn-sm min-w-12 {currentUnit === unit ? 'btn-primary' : 'btn-ghost'}"
+                on:click={() => currentUnit = unit}
+                aria-label={label}
+              >
+                {unit.toUpperCase()}
+              </button>
+            {/each}
           </div>
+        </div>
       </div>
 
     </div>
   </div>
 </div>
 
-
-
 <div class="w-full my-4 border border-gray-300" bind:this={canvasContainer}>
   <canvas id="canvas"></canvas>
 </div>
+
