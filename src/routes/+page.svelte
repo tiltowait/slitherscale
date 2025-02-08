@@ -7,10 +7,13 @@
 
 <script lang="ts">
   import Measurer from '$lib/Measurer.svelte'
+
+  const tip = "Tip: Use a ruler!"
+  const whatever = "Or anything you want. I'm not your mom."
 </script>
 
 <p class="my-4 mx-20 pb-4">
-  Select an image, specify reference points and a reference length (tip: use a ruler!), then click along your pet's spine to measure it. For more accurate results, use an overhead image.
+  Select an image, specify reference points and a <span class="tooltip underline" data-tip={tip}><strong>reference length</strong></span>, then click along <span class="tooltip underline" data-tip={whatever}><strong>your pet's spine</strong></span> to measure it. For more accurate results, use an overhead image.
 </p>
 
 <Measurer />
