@@ -1,270 +1,197 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { 
-    Canvas, 
-    Circle, 
-    Line, 
-    Group, 
-    Image,
-    type FabricObject
-  } from 'fabric'
+  import { Canvas, Circle, Line, FabricImage, type FabricObject, type TEvent } from 'fabric'
 
   type PathType = 'reference' | 'measurement'
   type Unit = 'in' | 'cm' | 'mm' | 'fur'
 
-  const conversions: Record<Unit, string> = {
+  const VALID_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+  const MAX_SIZE_MB = 25
+  const UNIT_LABELS = {
     'in': 'inches',
     'cm': 'centimeters',
     'mm': 'millimeters',
-    'fur': 'furlongs',
+    'fur': 'furlongs'
   }
 
   let fileInput: HTMLInputElement
+  let canvasContainer: HTMLDivElement
   let canvas: Canvas
+
   let currentPathType: PathType = 'reference'
   let currentUnit: Unit = 'in'
-  let canvasContainer: HTMLDivElement
-  let referencePointCount = 0
-  let referenceLength: number | null = null
-  let referenceDistance: number | null = null
-  let scaleFactor: number | null = null
-  let currentMeasurement: string | null = null
-  let totalDistance = 0
+  let referencePoints: { x: number; y: number }[] = []
+  let measurementPoints: { x: number; y: number }[] = []
 
-  onMount(() => {
+  const scale = {
+    factor: null as number | null,
+    referenceLength: null as number | null
+  }
+  const currentMeasurement = {
+    value: null as string | null
+  }
+
+  async function handleFileSelect(event: Event) {
+    const file = (event.target as HTMLInputElement)?.files?.[0]
+    if (!file || !VALID_TYPES.includes(file.type) || file.size > MAX_SIZE_MB * 1024**2) {
+      fileInput.value = ''
+      alert(file ? `File too large (max ${MAX_SIZE_MB}MB)` : 'Invalid file type')
+      return
+    }
+
+    try {
+      const img = await loadImageFile(file)
+      applyImageToCanvas(new FabricImage(img, { originX: 'left', originY: 'top' }))
+    } catch {
+      fileInput.value = ''
+      alert('Failed to load image')
+    }
+  }
+
+  function applyImageToCanvas(img: FabricImage) {
+    const canvasWidth = canvasContainer.clientWidth || 800 // Fallback width
+    const scaleFactor = canvasWidth / img.width!
+
+    img.set({
+      scaleX: scaleFactor,
+      scaleY: scaleFactor,
+      originX: 'left',
+      originY: 'top'
+    })
+    canvas.setDimensions({
+      width: canvasWidth,
+      height: img.height! * scaleFactor
+    })
+
+    canvas.backgroundImage = img
+    canvas.renderAll()
+  }
+
+  function initializeCanvas() {
     canvas = new Canvas('canvas', {
       width: canvasContainer.clientWidth,
       height: 600,
       selection: false
     })
 
-    window.addEventListener('resize', () => {
-      canvas.setWidth(canvasContainer.clientWidth)
-      canvas.requestRenderAll()
-    })
+    canvas.on('mouse:down', ({ e }: TEvent) => {
+      if (!fileInput.value) return
+      const { x, y } = canvas.getScenePoint(e)
 
-    canvas.on('mouse:down', handleCanvasClick)
-
-    return () => {
-      canvas.dispose()
-    }
-  })
-
-  function handleFileSelect(event: Event) {
-    const target = event.target as HTMLInputElement
-    const file = target.files?.[0]
-
-    if (file && file.type.startsWith('image/')) {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const result = e.target?.result
-        if (typeof result === 'string') {
-          Image.fromURL(result).then((img) => {
-            canvas.clear()
-            const scale = canvas.width! / img.width!
-            img.scale(scale)
-            img.set({
-              originX: 'left',
-              originY: 'top'
-            })
-
-            canvas.backgroundImage = img
-            canvas.setHeight(img.height! * scale)
-            canvas.requestRenderAll()
-          })
-        }
+      if (currentPathType === 'reference') {
+        handleReferencePoint(x, y)
+      } else {
+        handleMeasurementPoint(x, y)
       }
-      reader.readAsDataURL(file)
-    } else {
-      if (fileInput) fileInput.value = ''
-      alert('Please select a valid image file')
-    }
-  }
-
-  let currentGroup: Group | null = null
-  let pathPoints: { x: number; y: number }[] = []
-
-  function createCircle(left: number, top: number, color: string) {
-    return new Circle({
-      left,
-      top,
-      radius: 5,
-      fill: color,
-      originX: 'center',
-      originY: 'center',
-      selectable: false,
-      evented: false
     })
-  }
 
-  function createLine(points: number[], color: string) {
-    return new Line(points, {
-      stroke: color,
-      strokeWidth: 2,
-      selectable: false,
-      evented: false
-    })
-  }
-
-  function calculateDistance(point1: { x: number; y: number }, point2: { x: number; y: number }): number {
-    return Math.sqrt(
-      Math.pow(point2.x - point1.x, 2) +
-      Math.pow(point2.y - point1.y, 2)
+    window.addEventListener('resize', () => 
+      canvas.setDimensions({ width: canvasContainer.clientWidth })
     )
+
+    return () => canvas.dispose()
   }
 
-  function calculateTotalMeasurement(): string | null {
-    if (!scaleFactor || pathPoints.length < 2) return null
-
-    const distance = pathPoints.reduce((total, point, index) => {
-      if (index === 0) return 0
-      return total + calculateDistance(pathPoints[index - 1], point)
-    }, 0)
-
-    const measurement = distance * scaleFactor
-    return measurement.toFixed(2)
-  }
-
-  function handleCanvasClick(event: { e: MouseEvent }) {
-    if (!fileInput.value) {
+  function handleReferencePoint(x: number, y: number) {
+    if (referencePoints.length >= 2) return
+    if (!scale.referenceLength) {
+      alert("First, you must supply a reference length.")
       return
     }
-    const pointer = canvas.getPointer(event.e)
-    const point = { x: pointer.x, y: pointer.y }
 
-    if (currentPathType === 'reference') {
-      if (referencePointCount >= 2) {
-        return
-      }
+    referencePoints.push({ x, y })
+    addCanvasObject(new Circle({
+      left: x,
+      top: y,
+      radius: 5,
+      fill: 'red',
+      originX: 'center',
+      originY: 'center',
+    }))
 
-      if (pathPoints.length === 0) {
-        // Start new reference path
-        pathPoints = [point]
-        const circle = createCircle(point.x, point.y, 'red')
-        canvas.add(circle)
-        currentGroup = new Group([circle], {
-          selectable: false,
-          evented: false
-        })
-        canvas.add(currentGroup)
-        referencePointCount++
-      } else if (pathPoints.length === 1) {
-        // Complete reference path
-        pathPoints.push(point)
-        const circle = createCircle(point.x, point.y, 'red')
-        const line = createLine([
-          pathPoints[0].x,
-          pathPoints[0].y,
-          point.x,
-          point.y
-        ], 'red')
-
-        canvas.add(circle)
-        canvas.add(line)
-
-        if (currentGroup) {
-          const objects = currentGroup.getObjects()
-          currentGroup.remove(...objects)
-          currentGroup.add(circle, line, ...objects)
-          canvas.requestRenderAll()
-        }
-
-        // Calculate reference distance
-        referenceDistance = calculateDistance(pathPoints[0], pathPoints[1])
-
-        // Update scale factor if reference length is set
-        if (referenceLength) {
-          scaleFactor = referenceLength / referenceDistance
-        }
-
-        referencePointCount++
-        currentGroup = null
-        pathPoints = []
-      }
-    } else {
-      // Measurement path
-      if (pathPoints.length === 0) {
-        // Start new measurement path
-        pathPoints = [point]
-        const circle = createCircle(point.x, point.y, 'blue')
-        canvas.add(circle)
-        currentGroup = new Group([circle], {
-          selectable: false,
-          evented: false
-        })
-        canvas.add(currentGroup)
-        totalDistance = 0
-        currentMeasurement = null
-      } else {
-        // Add point to current path
-        pathPoints.push(point)
-        const circle = createCircle(point.x, point.y, 'blue')
-        const line = createLine([
-          pathPoints[pathPoints.length - 2].x,
-          pathPoints[pathPoints.length - 2].y,
-          point.x,
-          point.y
-        ], 'blue')
-
-        canvas.add(circle)
-        canvas.add(line)
-
-        // Calculate and display measurement if we have a scale factor
-        if (scaleFactor) {
-          currentMeasurement = calculateTotalMeasurement()
-        }
-
-        if (currentGroup) {
-          const objects = currentGroup.getObjects()
-          currentGroup.remove(...objects)
-          currentGroup.add(circle, line, ...objects)
-          canvas.requestRenderAll()
-        }
-      }
+    if (referencePoints.length === 2) {
+      const [a, b] = referencePoints
+      addCanvasObject(new Line([a.x, a.y, b.x, b.y], {
+        stroke: 'red',
+        strokeWidth: 2,
+        selectable: false,
+        evented: false,
+      }))
+      scale.factor = scale.referenceLength! / Math.hypot(b.x - a.x, b.y - a.y)
+      currentPathType = 'measurement'
     }
   }
 
-  function clearPaths() {
+  function handleMeasurementPoint(x: number, y: number) {
+    if (!scale.factor) return
+
+    measurementPoints.push({ x, y })
+    addCanvasObject(new Circle({
+      left: x,
+      top: y,
+      radius: 5,
+      fill: 'blue',
+      originX: 'center',
+      originY: 'center',
+    }))
+
+    if (measurementPoints.length > 1) {
+      const prev = measurementPoints.at(-2)!
+      addCanvasObject(new Line([prev.x, prev.y, x, y], {
+        stroke: 'blue',
+        strokeWidth: 2,
+        selectable: false,
+        evented: false,
+      }))
+      currentMeasurement.value = scale.factor
+        ? (measurementPoints.slice(1).reduce((total, p, i) => 
+            total + Math.hypot(p.x - measurementPoints[i].x, p.y - measurementPoints[i].y), 0
+          ) * scale.factor).toFixed(2)
+        : null
+    }
+  }
+
+  function addCanvasObject(obj: FabricObject) {
+    canvas.add(obj)
+    canvas.requestRenderAll()
+    return obj
+  }
+
+  function clearCanvas() {
     const bgImage = canvas.backgroundImage
     canvas.clear()
+
     if (bgImage) {
       canvas.backgroundImage = bgImage
       canvas.requestRenderAll()
     }
-    currentGroup = null
-    pathPoints = []
-    referencePointCount = 0
-    referenceLength = null
-    referenceDistance = null
-    scaleFactor = null
-    currentMeasurement = null
-    totalDistance = 0
+
+    referencePoints = []
+    measurementPoints = []
     currentPathType = 'reference'
+    scale.factor = null
+    scale.referenceLength = null
+    currentMeasurement.value = null
   }
 
-  function switchPathType() {
-    currentPathType = currentPathType === 'reference' ? 'measurement' : 'reference'
-    if (currentGroup) {
-      pathPoints = []
-      currentGroup = null
-      currentMeasurement = null
-      totalDistance = 0
-    }
+  async function loadImageFile(file: File) {
+    return new Promise<HTMLImageElement>((resolve, reject) => {
+      const url = URL.createObjectURL(file)
+      const img = new Image()
+      img.src = url
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        resolve(img)
+      }
+      img.onerror = reject
+    })
   }
+  
+  onMount(initializeCanvas)
 
-  $: if (referenceLength && referenceDistance) {
-    scaleFactor = referenceLength / referenceDistance
-    if (currentPathType !== 'measurement') {
-      switchPathType()
-    }
-
-    if (pathPoints.length > 1) {
-      currentMeasurement = calculateTotalMeasurement()
-    }
-  }
 </script>
 
-<!-- File selector and buttons -->
+<!-- Updated template block -->
 <div class="flex flex-col sm:flex-row sm:justify-between gap-4 items-center">
   <input
     bind:this={fileInput}
@@ -276,39 +203,36 @@
   />
 
   <div class="flex gap-2 w-full sm:w-auto">
-    <button class="btn btn-primary flex-1 sm:flex-none">
-      Mode: {currentPathType}
-    </button>
-    <button class="btn btn-secondary flex-1 sm:flex-none" on:click={clearPaths}>
+    <div class="btn btn-outline btn-primary flex-1 sm:flex-none pointer-events-none">
+      {currentPathType[0].toUpperCase() + currentPathType.slice(1)} Mode
+    </div>
+
+    <button class="btn btn-secondary flex-1 sm:flex-none" on:click={clearCanvas}>
       Reset
     </button>
   </div>
 </div>
 
-<!-- Stats card -->
 <div class="card bg-base-200 shadow mt-4">
   <div class="card-body p-4 sm:p-6">
     <div class="stats bg-base-100 shadow-sm w-full flex flex-col sm:flex-row">
-
-      <!-- Reference length and unit selector -->
-      <div class="stat w-full order-1 sm:order-none">
+      <div class="stat w-full">
         <div class="stat-title text-base-content/70">Reference Length</div>
         <div class="flex flex-wrap items-center gap-2">
           <input
-            id="reference-length"
             type="number"
             min="0"
             step="0.125"
-            bind:value={referenceLength}
+            bind:value={scale.referenceLength}
             placeholder="Enter length"
             class="input input-bordered w-full sm:w-32"
           />
           <div class="join bg-base-200 rounded-sm w-full sm:w-auto">
-            {#each Object.entries(conversions) as [unit, label]}
+            {#each Object.keys(UNIT_LABELS) as unit}
               <button 
                 class="join-item btn btn-sm flex-1 sm:min-w-12 {currentUnit === unit ? 'btn-primary' : 'btn-ghost'}"
-                on:click={() => currentUnit = unit}
-                aria-label={label}
+                on:click={() => currentUnit = unit as Unit}
+                aria-label={UNIT_LABELS[unit as Unit]}
               >
                 {unit.toUpperCase()}
               </button>
@@ -317,33 +241,27 @@
         </div>
       </div>
 
-      <!-- Length readout -->
-      <div class="stat w-full order-2 sm:order-none">
+      <div class="stat w-full">
         <div class="stat-title text-base-content/70">Total Length</div>
-        {#if currentMeasurement}
+        {#if currentMeasurement.value}
           <div class="stat-value text-primary break-words">
-            {currentMeasurement}
-            <span class="text-lg ml-1">{conversions[currentUnit]}</span>
+            {currentMeasurement.value}
+            <span class="text-lg ml-1">{UNIT_LABELS[currentUnit]}</span>
           </div>
         {:else}
           <div class="stat-desc text-base">
-            {#if referenceLength && referenceDistance}
-              Add points in measurement mode
-            {:else if referenceLength}
-              Add reference points
-            {:else}
-              <em>Set the reference length</em>
-            {/if}
+            <em>
+              {scale.referenceLength 
+                ? referencePoints.length < 2 ? 'Add reference points' : 'Add measurement points'
+                : 'Set the reference length'}
+            </em>
           </div>
         {/if}
       </div>
-
     </div>
   </div>
 </div>
 
-
 <div class="w-full my-4 border border-gray-300" bind:this={canvasContainer}>
   <canvas id="canvas"></canvas>
 </div>
-
