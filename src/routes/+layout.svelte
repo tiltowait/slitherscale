@@ -13,11 +13,16 @@
   </main>
 
   <footer class="footer footer-center bg-base-300 text-base-content p-4">
-    <aside>
+    <aside class="md:w-3/5">
       <p>
         This tool does not use cookies. It does not collect analytics. 
         It does not harvest your data. Images are not uploaded anywhere 
         and never leave your system.
+      </p>
+      <p>
+        <a class="link link-primary" href="https://github.com/tiltowait/slitherscale" title="View the source on GitHub">
+          View the source on GitHub.
+        </a>
       </p>
     </aside>
   </footer>
