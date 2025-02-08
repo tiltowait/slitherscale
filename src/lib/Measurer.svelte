@@ -264,51 +264,34 @@
   }
 </script>
 
-<div class="flex flex-col md:flex-row md:justify-between gap-4 items-center">
+<!-- File selector and buttons -->
+<div class="flex flex-col sm:flex-row sm:justify-between gap-4 items-center">
   <input
     bind:this={fileInput}
     type="file"
-    class="file-input file-input-bordered file-input-primary w-full max-w-xs"
+    class="file-input file-input-bordered file-input-primary w-full sm:w-auto"
     accept="image/*"
     on:change={handleFileSelect}
     aria-label="Choose image file"
   />
 
-  <div class="flex gap-2">
-    <button class="btn btn-primary" disabled>
+  <div class="flex gap-2 w-full sm:w-auto">
+    <button class="btn btn-primary flex-1 sm:flex-none">
       Mode: {currentPathType}
     </button>
-    <button class="btn btn-secondary" on:click={clearPaths}>Reset</button>
+    <button class="btn btn-secondary flex-1 sm:flex-none" on:click={clearPaths}>
+      Reset
+    </button>
   </div>
 </div>
 
+<!-- Stats card -->
 <div class="card bg-base-200 shadow mt-4">
-  <div class="card-body p-6">
-    <!-- Add flex-col on mobile, row on larger screens -->
-    <div class="stats bg-base-100 shadow-sm w-full stats-vertical lg:stats-horizontal">
+  <div class="card-body p-4 sm:p-6">
+    <div class="stats bg-base-100 shadow-sm w-full flex flex-col sm:flex-row">
 
-      <!-- Length readout - full width on mobile -->
-      <div class="stat w-full lg:w-auto order-2 lg:order-1">
-        <div class="stat-title text-base-content/70">Total Length</div>
-        {#if currentMeasurement}
-          <div class="stat-value text-primary">
-            {currentMeasurement}<span class="text-lg ml-1">{conversions[currentUnit]}</span>
-          </div>
-        {:else}
-          <div class="stat-desc text-base max-w-[200px]">
-            {#if referenceLength && referenceDistance}
-              Add points in measurement mode
-            {:else if referenceLength}
-              Add reference points
-            {:else}
-              Set the reference length
-            {/if}
-          </div>
-        {/if}
-      </div>
-
-      <!-- Reference length and unit selector - full width on mobile -->
-      <div class="stat w-full lg:w-auto order-1 lg:order-2">
+      <!-- Reference length and unit selector -->
+      <div class="stat w-full order-1 sm:order-none">
         <div class="stat-title text-base-content/70">Reference Length</div>
         <div class="flex flex-wrap items-center gap-2">
           <input
@@ -318,12 +301,12 @@
             step="0.125"
             bind:value={referenceLength}
             placeholder="Enter length"
-            class="input input-bordered w-32"
+            class="input input-bordered w-full sm:w-32"
           />
-          <div class="join bg-base-200 rounded-lg">
+          <div class="join bg-base-200 rounded-sm w-full sm:w-auto">
             {#each Object.entries(conversions) as [unit, label]}
               <button 
-                class="join-item btn btn-sm min-w-12 {currentUnit === unit ? 'btn-primary' : 'btn-ghost'}"
+                class="join-item btn btn-sm flex-1 sm:min-w-12 {currentUnit === unit ? 'btn-primary' : 'btn-ghost'}"
                 on:click={() => currentUnit = unit}
                 aria-label={label}
               >
@@ -334,9 +317,31 @@
         </div>
       </div>
 
+      <!-- Length readout -->
+      <div class="stat w-full order-2 sm:order-none">
+        <div class="stat-title text-base-content/70">Total Length</div>
+        {#if currentMeasurement}
+          <div class="stat-value text-primary break-words">
+            {currentMeasurement}
+            <span class="text-lg ml-1">{conversions[currentUnit]}</span>
+          </div>
+        {:else}
+          <div class="stat-desc text-base">
+            {#if referenceLength && referenceDistance}
+              Add points in measurement mode
+            {:else if referenceLength}
+              Add reference points
+            {:else}
+              <em>Set the reference length</em>
+            {/if}
+          </div>
+        {/if}
+      </div>
+
     </div>
   </div>
 </div>
+
 
 <div class="w-full my-4 border border-gray-300" bind:this={canvasContainer}>
   <canvas id="canvas"></canvas>
