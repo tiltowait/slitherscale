@@ -1,73 +1,78 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte'
-  import Konva from 'konva/lib/index'
-  import type { KonvaEventObject } from 'konva/lib/Node'
+  import { onMount, onDestroy } from "svelte";
+  import Konva from "konva/lib/index";
+  import type { KonvaEventObject } from "konva/lib/Node";
 
-  type PathType = 'reference' | 'measurement'
-  type Unit = 'in' | 'cm' | 'mm' | 'fur'
+  type PathType = "reference" | "measurement";
+  type Unit = "in" | "cm" | "mm" | "fur";
 
-  const VALID_TYPES = ['image/jpeg', 'image/png', 'image/webp']
-  const MAX_SIZE_MB = 25
+  const VALID_TYPES = ["image/jpeg", "image/png", "image/webp"];
+  const MAX_SIZE_MB = 25;
   const UNIT_LABELS = {
-    'in': 'inches',
-    'cm': 'centimeters',
-    'mm': 'millimeters',
-    'fur': 'furlongs'
-  }
+    in: "inches",
+    cm: "centimeters",
+    mm: "millimeters",
+    fur: "furlongs",
+  };
 
-  let fileInput: HTMLInputElement
-  let canvasContainer: HTMLDivElement
+  let fileInput: HTMLInputElement;
+  let canvasContainer: HTMLDivElement;
 
-  let currentPathType: PathType = 'reference'
-  let currentUnit: Unit = 'in'
-  let referencePoints: { x: number; y: number }[] = []
-  let measurementPoints: { x: number; y: number }[] = []
+  let currentPathType: PathType = "reference";
+  let currentUnit: Unit = "in";
+  let referencePoints: { x: number; y: number }[] = [];
+  let measurementPoints: { x: number; y: number }[] = [];
 
   const scale = {
     factor: null as number | null,
-    referenceLength: null as number | null
-  }
+    referenceLength: null as number | null,
+  };
   const currentMeasurement = {
-    value: null as string | null
-  }
+    value: null as string | null,
+  };
 
-  let touchStartPosition = { x: 0, y: 0 }
+  let touchStartPosition = { x: 0, y: 0 };
 
   // In order to avoid a canvas dependency (which in turn gives a Python
   // dependency), we have to import Konva from konva/lib/index; however, this
   // breaks type-checking, but only in global scope. Inside functions, the
   // checker works just fine. Kludge: ignore the errors for these definitions.
   // @ts-ignore
-  let stage: Konva.Stage
+  let stage: Konva.Stage;
   // @ts-ignore
-  let layer: Konva.Layer
+  let layer: Konva.Layer;
   // @ts-ignore
-  let backgroundImage: Konva.Image | null = null
-
+  let backgroundImage: Konva.Image | null = null;
 
   async function handleFileSelect(event: Event) {
-    const file = (event.target as HTMLInputElement)?.files?.[0]
-    if (!file || !VALID_TYPES.includes(file.type) || file.size > MAX_SIZE_MB * 1024**2) {
-      fileInput.value = ''
-      alert(file ? `File too large (max ${MAX_SIZE_MB}MB)` : 'Invalid file type')
-      return
+    const file = (event.target as HTMLInputElement)?.files?.[0];
+    if (
+      !file ||
+      !VALID_TYPES.includes(file.type) ||
+      file.size > MAX_SIZE_MB * 1024 ** 2
+    ) {
+      fileInput.value = "";
+      alert(
+        file ? `File too large (max ${MAX_SIZE_MB}MB)` : "Invalid file type",
+      );
+      return;
     }
 
     try {
-      const img = await loadImageFile(file)
-      applyImageToCanvas(img)
+      const img = await loadImageFile(file);
+      applyImageToCanvas(img);
     } catch {
-      fileInput.value = ''
-      alert('Failed to load image')
+      fileInput.value = "";
+      alert("Failed to load image");
     }
   }
 
   function applyImageToCanvas(img: HTMLImageElement) {
-    const canvasWidth = canvasContainer.clientWidth
-    const scaleFactor = canvasWidth / img.width
+    const canvasWidth = canvasContainer.clientWidth;
+    const scaleFactor = canvasWidth / img.width;
 
     if (backgroundImage) {
-      backgroundImage.destroy()
+      backgroundImage.destroy();
     }
 
     backgroundImage = new Konva.Image({
@@ -75,12 +80,12 @@
       width: img.width * scaleFactor,
       height: img.height * scaleFactor,
       preventDefault: false,
-    })
+    });
 
-    layer.add(backgroundImage)
-    stage.width(canvasWidth)
-    stage.height(img.height * scaleFactor)
-    layer.batchDraw()
+    layer.add(backgroundImage);
+    stage.width(canvasWidth);
+    stage.height(img.height * scaleFactor);
+    layer.batchDraw();
   }
 
   function initializeCanvas() {
@@ -88,146 +93,158 @@
       container: canvasContainer,
       width: canvasContainer.clientWidth,
       height: 600,
-    })
-    stage.on('touchstart', handleTouchStart)
-    stage.on('click', handleCanvasClick)
+    });
+    stage.on("touchstart", handleTouchStart);
+    stage.on("click", handleCanvasClick);
 
-    layer = new Konva.Layer()
-    stage.add(layer)
+    layer = new Konva.Layer();
+    stage.add(layer);
 
-    window.addEventListener('resize', handleResize)
+    window.addEventListener("resize", handleResize);
 
-    return () => stage.destroy()
+    return () => stage.destroy();
   }
 
   /**
    * Measure the start of a tap so we don't add a point on a pan.
    */
   function handleTouchStart(_: KonvaEventObject<TouchEvent>) {
-    const pos = stage.getPointerPosition()
-    if (pos) touchStartPosition = pos
+    const pos = stage.getPointerPosition();
+    if (pos) touchStartPosition = pos;
   }
 
   function handleCanvasClick(e: KonvaEventObject<MouseEvent>) {
-    if (!fileInput.value) return
+    if (!fileInput.value) return;
 
-    const pos = stage.getPointerPosition()
-    if (!pos) return
+    const pos = stage.getPointerPosition();
+    if (!pos) return;
 
-    if (e.type === 'tap') {
-      let distance = Math.hypot(pos.x - touchStartPosition.x, pos.y - touchStartPosition.y)
+    if (e.type === "tap") {
+      let distance = Math.hypot(
+        pos.x - touchStartPosition.x,
+        pos.y - touchStartPosition.y,
+      );
       if (distance > 5) {
-        return
+        return;
       }
     }
 
-    if (currentPathType === 'reference') {
-      handleReferencePoint(pos.x, pos.y)
+    if (currentPathType === "reference") {
+      handleReferencePoint(pos.x, pos.y);
     } else {
-      handleMeasurementPoint(pos.x, pos.y)
+      handleMeasurementPoint(pos.x, pos.y);
     }
   }
 
   function handleReferencePoint(x: number, y: number) {
-    if (referencePoints.length >= 2) return
+    if (referencePoints.length >= 2) return;
     if (!scale.referenceLength) {
-      alert("First, you must supply a reference length.")
-      return
+      alert("First, you must supply a reference length.");
+      return;
     }
 
-    referencePoints.push({ x, y })
+    referencePoints.push({ x, y });
 
     const circle = new Konva.Circle({
       x,
       y,
       radius: 5,
-      fill: 'red',
-    })
-    layer.add(circle)
+      fill: "red",
+    });
+    layer.add(circle);
 
     if (referencePoints.length === 2) {
-      const [a, b] = referencePoints
+      const [a, b] = referencePoints;
       const line = new Konva.Line({
         points: [a.x, a.y, b.x, b.y],
-        stroke: 'red',
+        stroke: "red",
         strokeWidth: 2,
-      })
-      layer.add(line)
+      });
+      layer.add(line);
 
-      scale.factor = scale.referenceLength! / Math.hypot(b.x - a.x, b.y - a.y)
-      currentPathType = 'measurement'
+      scale.factor = scale.referenceLength! / Math.hypot(b.x - a.x, b.y - a.y);
+      currentPathType = "measurement";
 
-      layer.batchDraw()
+      layer.batchDraw();
     }
   }
 
   function handleMeasurementPoint(x: number, y: number) {
-    if (!scale.factor) return
+    if (!scale.factor) return;
 
-    measurementPoints.push({ x, y })
+    measurementPoints.push({ x, y });
 
     const circle = new Konva.Circle({
       x,
       y,
       radius: 5,
-      fill: 'blue'
-    })
-    layer.add(circle)
+      fill: "blue",
+    });
+    layer.add(circle);
 
     if (measurementPoints.length > 1) {
-      const prev = measurementPoints.at(-2)!
+      const prev = measurementPoints.at(-2)!;
       const line = new Konva.Line({
         points: [prev.x, prev.y, x, y],
-        stroke: 'blue',
+        stroke: "blue",
         strokeWidth: 2,
-      })
-      layer.add(line)
-      layer.batchDraw()
+      });
+      layer.add(line);
+      layer.batchDraw();
 
       currentMeasurement.value = scale.factor
-        ? (measurementPoints.slice(1).reduce((total, p, i) => 
-            total + Math.hypot(p.x - measurementPoints[i].x, p.y - measurementPoints[i].y), 0
-          ) * scale.factor).toFixed(2)
-        : null
+        ? (
+            measurementPoints
+              .slice(1)
+              .reduce(
+                (total, p, i) =>
+                  total +
+                  Math.hypot(
+                    p.x - measurementPoints[i].x,
+                    p.y - measurementPoints[i].y,
+                  ),
+                0,
+              ) * scale.factor
+          ).toFixed(2)
+        : null;
     }
   }
 
   function clearCanvas() {
-    referencePoints = []
-    measurementPoints = []
-    currentPathType = 'reference'
-    scale.factor = null
-    scale.referenceLength = null
-    currentMeasurement.value = null
+    referencePoints = [];
+    measurementPoints = [];
+    currentPathType = "reference";
+    scale.factor = null;
+    scale.referenceLength = null;
+    currentMeasurement.value = null;
 
-    layer.destroyChildren()
+    layer.destroyChildren();
     if (backgroundImage) {
-      layer.add(backgroundImage)
+      layer.add(backgroundImage);
     }
-    layer.batchDraw()
+    layer.batchDraw();
   }
 
   function handleResize() {
-    stage.width(canvasContainer.clientWidth)
-    layer.batchDraw()
+    stage.width(canvasContainer.clientWidth);
+    layer.batchDraw();
   }
 
   async function loadImageFile(file: File) {
     return new Promise<HTMLImageElement>((resolve, reject) => {
-      const url = URL.createObjectURL(file)
-      const img = new Image()
-      img.src = url
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.src = url;
       img.onload = () => {
-        URL.revokeObjectURL(url)
-        resolve(img)
-      }
-      img.onerror = reject
-    })
+        URL.revokeObjectURL(url);
+        resolve(img);
+      };
+      img.onerror = reject;
+    });
   }
-  
-  onMount(initializeCanvas)
-  onDestroy(() => stage?.destroy())
 
+  onMount(initializeCanvas);
+  onDestroy(() => stage?.destroy());
 </script>
 
 <!-- Updated template block -->
@@ -242,11 +259,16 @@
   />
 
   <div class="flex gap-2 w-full sm:w-auto">
-    <div class="btn btn-outline btn-primary flex-1 sm:flex-none pointer-events-none">
+    <div
+      class="btn btn-outline btn-primary flex-1 sm:flex-none pointer-events-none"
+    >
       {currentPathType[0].toUpperCase() + currentPathType.slice(1)} Mode
     </div>
 
-    <button class="btn btn-secondary flex-1 sm:flex-none" on:click={clearCanvas}>
+    <button
+      class="btn btn-secondary flex-1 sm:flex-none"
+      on:click={clearCanvas}
+    >
       Reset
     </button>
   </div>
@@ -268,9 +290,12 @@
           />
           <div class="join bg-base-200 rounded-sm w-full sm:w-auto">
             {#each Object.keys(UNIT_LABELS) as unit}
-              <button 
-                class="join-item btn btn-sm flex-1 sm:min-w-12 {currentUnit === unit ? 'btn-primary' : 'btn-ghost'}"
-                on:click={() => currentUnit = unit as Unit}
+              <button
+                class="join-item btn btn-sm flex-1 sm:min-w-12 {currentUnit ===
+                unit
+                  ? 'btn-primary'
+                  : 'btn-ghost'}"
+                on:click={() => (currentUnit = unit as Unit)}
                 aria-label={UNIT_LABELS[unit as Unit]}
               >
                 {unit.toUpperCase()}
@@ -290,9 +315,11 @@
         {:else}
           <div class="stat-desc text-base">
             <em>
-              {scale.referenceLength 
-                ? referencePoints.length < 2 ? 'Add reference points' : 'Add measurement points'
-                : 'Set the reference length'}
+              {scale.referenceLength
+                ? referencePoints.length < 2
+                  ? "Add reference points"
+                  : "Add measurement points"
+                : "Set the reference length"}
             </em>
           </div>
         {/if}
@@ -301,6 +328,9 @@
   </div>
 </div>
 
-<div class="w-full my-4 border border-gray-300 touch-manipulation" bind:this={canvasContainer}>
+<div
+  class="w-full my-4 border border-gray-300 touch-manipulation"
+  bind:this={canvasContainer}
+>
   <canvas id="canvas"></canvas>
 </div>
