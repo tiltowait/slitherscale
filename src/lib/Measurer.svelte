@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
-  import Konva from 'konva';
-  import type { KonvaEventObject } from 'konva/lib/Node';
+  import Konva from 'konva/lib/index'
+  import type { KonvaEventObject } from 'konva/lib/Node'
 
   type PathType = 'reference' | 'measurement'
   type Unit = 'in' | 'cm' | 'mm' | 'fur'
@@ -31,9 +31,17 @@
     value: null as string | null
   }
 
-  let stage: Konva.Stage
-  let layer: Konva.Layer
   let touchStartPosition = { x: 0, y: 0 }
+
+  // In order to avoid a canvas dependency (which in turn gives a Python
+  // dependency), we have to import Konva from konva/lib/index; however, this
+  // breaks type-checking, but only in global scope. Inside functions, the
+  // checker works just fine. Kludge: ignore the errors for these definitions.
+  // @ts-ignore
+  let stage: Konva.Stage
+  // @ts-ignore
+  let layer: Konva.Layer
+  // @ts-ignore
   let backgroundImage: Konva.Image | null = null
 
 
