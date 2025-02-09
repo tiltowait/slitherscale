@@ -12,7 +12,7 @@
   const whatever = "Or anything you want. I'm not your mom."
 </script>
 
-<p class="my-4 mx-20 pb-4">
+<p class="my-4 md:mx-20 pb-4">
   Select an image, specify reference points and a <span class="tooltip underline" data-tip={tip}><strong>reference length</strong></span>, then click along <span class="tooltip underline" data-tip={whatever}><strong>your pet's spine</strong></span> to measure it. For more accurate results, use an overhead image.
 </p>
 
