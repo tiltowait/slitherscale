@@ -4,6 +4,7 @@
   import type { KonvaEventObject } from "konva/lib/Node";
 
   type PathType = "reference" | "measurement";
+  type Point = { x: number; y: number };
   type Unit = "in" | "cm" | "mm" | "fur";
 
   const VALID_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -14,24 +15,29 @@
     mm: "millimeters",
     fur: "furlongs",
   };
+  const unitKeys = Object.keys(UNIT_LABELS) as Unit[];
 
   let fileInput: HTMLInputElement;
   let canvasContainer: HTMLDivElement;
 
-  let currentPathType: PathType = "reference";
-  let currentUnit: Unit = "in";
-  let referencePoints: { x: number; y: number }[] = [];
-  let measurementPoints: { x: number; y: number }[] = [];
+  let currentPathType = $state<PathType>("reference");
+  let currentUnit = $state<Unit>("in");
+  let referencePoints = $state<Point[]>([]);
+  let measurementPoints = $state<Point[]>([]);
+  let referenceLength = $state<number | null>(null);
+  let touchStartPosition: Point = { x: 0, y: 0 };
 
-  const scale = {
-    factor: null as number | null,
-    referenceLength: null as number | null,
-  };
-  const currentMeasurement = {
-    value: null as string | null,
-  };
+  const scaleFactor = $derived(
+    referencePoints.length == 2 && referenceLength
+      ? referenceLength / calculateTotalDistance(referencePoints)
+      : null,
+  );
 
-  let touchStartPosition = { x: 0, y: 0 };
+  const currentMeasurementValue = $derived(
+    scaleFactor && measurementPoints.length > 1
+      ? (calculateTotalDistance(measurementPoints) * scaleFactor).toFixed(2)
+      : null,
+  );
 
   // In order to avoid a canvas dependency (which in turn gives a Python
   // dependency), we have to import Konva from konva/lib/index; however, this
@@ -67,27 +73,6 @@
     }
   }
 
-  function applyImageToCanvas(img: HTMLImageElement) {
-    const canvasWidth = canvasContainer.clientWidth;
-    const scaleFactor = canvasWidth / img.width;
-
-    if (backgroundImage) {
-      backgroundImage.destroy();
-    }
-
-    backgroundImage = new Konva.Image({
-      image: img,
-      width: img.width * scaleFactor,
-      height: img.height * scaleFactor,
-      preventDefault: false,
-    });
-
-    layer.add(backgroundImage);
-    stage.width(canvasWidth);
-    stage.height(img.height * scaleFactor);
-    layer.batchDraw();
-  }
-
   function initializeCanvas() {
     stage = new Konva.Stage({
       container: canvasContainer,
@@ -103,6 +88,24 @@
     window.addEventListener("resize", handleResize);
 
     return () => stage.destroy();
+  }
+
+  function clearCanvas() {
+    referencePoints = [];
+    measurementPoints = [];
+    currentPathType = "reference";
+    referenceLength = null;
+
+    layer.destroyChildren();
+    if (backgroundImage) {
+      layer.add(backgroundImage);
+    }
+    layer.batchDraw();
+  }
+
+  function handleResize() {
+    stage.width(canvasContainer.clientWidth);
+    layer.batchDraw();
   }
 
   /**
@@ -138,7 +141,7 @@
 
   function handleReferencePoint(x: number, y: number) {
     if (referencePoints.length >= 2) return;
-    if (!scale.referenceLength) {
+    if (!referenceLength) {
       alert("First, you must supply a reference length.");
       return;
     }
@@ -162,7 +165,7 @@
       });
       layer.add(line);
 
-      scale.factor = scale.referenceLength! / Math.hypot(b.x - a.x, b.y - a.y);
+      //scale.factor = scale.referenceLength! / Math.hypot(b.x - a.x, b.y - a.y);
       currentPathType = "measurement";
 
       layer.batchDraw();
@@ -170,7 +173,7 @@
   }
 
   function handleMeasurementPoint(x: number, y: number) {
-    if (!scale.factor) return;
+    if (!scaleFactor) return;
 
     measurementPoints.push({ x, y });
 
@@ -191,43 +194,14 @@
       });
       layer.add(line);
       layer.batchDraw();
-
-      currentMeasurement.value = scale.factor
-        ? (
-            measurementPoints
-              .slice(1)
-              .reduce(
-                (total, p, i) =>
-                  total +
-                  Math.hypot(
-                    p.x - measurementPoints[i].x,
-                    p.y - measurementPoints[i].y,
-                  ),
-                0,
-              ) * scale.factor
-          ).toFixed(2)
-        : null;
     }
   }
 
-  function clearCanvas() {
-    referencePoints = [];
-    measurementPoints = [];
-    currentPathType = "reference";
-    scale.factor = null;
-    scale.referenceLength = null;
-    currentMeasurement.value = null;
-
-    layer.destroyChildren();
-    if (backgroundImage) {
-      layer.add(backgroundImage);
-    }
-    layer.batchDraw();
-  }
-
-  function handleResize() {
-    stage.width(canvasContainer.clientWidth);
-    layer.batchDraw();
+  function calculateTotalDistance(points: Point[]) {
+    return points.slice(1).reduce((total, p, i) => {
+      const prev = points[i];
+      return total + Math.hypot(p.x - prev.x, p.y - prev.y);
+    }, 0);
   }
 
   async function loadImageFile(file: File) {
@@ -243,6 +217,27 @@
     });
   }
 
+  function applyImageToCanvas(img: HTMLImageElement) {
+    const canvasWidth = canvasContainer.clientWidth;
+    const scaleFactor = canvasWidth / img.width;
+
+    if (backgroundImage) {
+      backgroundImage.destroy();
+    }
+
+    backgroundImage = new Konva.Image({
+      image: img,
+      width: img.width * scaleFactor,
+      height: img.height * scaleFactor,
+      preventDefault: false,
+    });
+
+    layer.add(backgroundImage);
+    stage.width(canvasWidth);
+    stage.height(img.height * scaleFactor);
+    layer.batchDraw();
+  }
+
   onMount(initializeCanvas);
   onDestroy(() => stage?.destroy());
 </script>
@@ -254,7 +249,7 @@
     type="file"
     class="file-input file-input-bordered file-input-primary w-full sm:w-auto"
     accept="image/*"
-    on:change={handleFileSelect}
+    onchange={handleFileSelect}
     aria-label="Choose image file"
   />
 
@@ -265,10 +260,7 @@
       {currentPathType[0].toUpperCase() + currentPathType.slice(1)} Mode
     </div>
 
-    <button
-      class="btn btn-secondary flex-1 sm:flex-none"
-      on:click={clearCanvas}
-    >
+    <button class="btn btn-secondary flex-1 sm:flex-none" onclick={clearCanvas}>
       Reset
     </button>
   </div>
@@ -278,24 +270,24 @@
   <div class="card-body p-4 sm:p-6">
     <div class="stats bg-base-100 shadow-sm w-full flex flex-col sm:flex-row">
       <div class="stat w-full">
-        <div class="stat-title text-base-content/70">Reference Length</div>
+        <div class="stat-title text-base-content/70">Reference length</div>
         <div class="flex flex-wrap items-center gap-2">
           <input
             type="number"
             min="0"
             step="0.125"
-            bind:value={scale.referenceLength}
+            bind:value={referenceLength}
             placeholder="Enter length"
             class="input input-bordered w-full sm:w-32"
           />
           <div class="join bg-base-200 rounded-sm w-full sm:w-auto">
-            {#each Object.keys(UNIT_LABELS) as unit}
+            {#each unitKeys as unit}
               <button
                 class="join-item btn btn-sm flex-1 sm:min-w-12 {currentUnit ===
                 unit
                   ? 'btn-primary'
                   : 'btn-ghost'}"
-                on:click={() => (currentUnit = unit as Unit)}
+                onclick={() => (currentUnit = unit as Unit)}
                 aria-label={UNIT_LABELS[unit as Unit]}
               >
                 {unit.toUpperCase()}
@@ -306,16 +298,16 @@
       </div>
 
       <div class="stat w-full">
-        <div class="stat-title text-base-content/70">Total Length</div>
-        {#if currentMeasurement.value}
+        <div class="stat-title text-base-content/70">Measured length</div>
+        {#if currentMeasurementValue}
           <div class="stat-value text-primary break-words">
-            {currentMeasurement.value}
+            {currentMeasurementValue}
             <span class="text-lg ml-1">{UNIT_LABELS[currentUnit]}</span>
           </div>
         {:else}
           <div class="stat-desc text-base">
             <em>
-              {scale.referenceLength
+              {referenceLength
                 ? referencePoints.length < 2
                   ? "Add reference points"
                   : "Add measurement points"
