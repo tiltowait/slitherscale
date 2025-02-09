@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
-  import { Canvas, Circle, Line, FabricImage, type FabricObject, type TEvent } from 'fabric'
+  import { onMount, onDestroy } from 'svelte'
+  import Konva from 'konva';
+  import type { KonvaEventObject } from 'konva/lib/Node';
 
   type PathType = 'reference' | 'measurement'
   type Unit = 'in' | 'cm' | 'mm' | 'fur'
@@ -16,7 +17,6 @@
 
   let fileInput: HTMLInputElement
   let canvasContainer: HTMLDivElement
-  let canvas: Canvas
 
   let currentPathType: PathType = 'reference'
   let currentUnit: Unit = 'in'
@@ -31,6 +31,12 @@
     value: null as string | null
   }
 
+  let stage: Konva.Stage
+  let layer: Konva.Layer
+  let touchStartPosition = { x: 0, y: 0 }
+  let backgroundImage: Konva.Image | null = null
+
+
   async function handleFileSelect(event: Event) {
     const file = (event.target as HTMLInputElement)?.files?.[0]
     if (!file || !VALID_TYPES.includes(file.type) || file.size > MAX_SIZE_MB * 1024**2) {
@@ -41,55 +47,77 @@
 
     try {
       const img = await loadImageFile(file)
-      applyImageToCanvas(new FabricImage(img, { originX: 'left', originY: 'top' }))
+      applyImageToCanvas(img)
     } catch {
       fileInput.value = ''
       alert('Failed to load image')
     }
   }
 
-  function applyImageToCanvas(img: FabricImage) {
-    const canvasWidth = canvasContainer.clientWidth || 800 // Fallback width
-    const scaleFactor = canvasWidth / img.width!
+  function applyImageToCanvas(img: HTMLImageElement) {
+    const canvasWidth = canvasContainer.clientWidth
+    const scaleFactor = canvasWidth / img.width
 
-    img.set({
-      scaleX: scaleFactor,
-      scaleY: scaleFactor,
-      originX: 'left',
-      originY: 'top'
-    })
-    canvas.setDimensions({
-      width: canvasWidth,
-      height: img.height! * scaleFactor
+    if (backgroundImage) {
+      backgroundImage.destroy()
+    }
+
+    backgroundImage = new Konva.Image({
+      image: img,
+      width: img.width * scaleFactor,
+      height: img.height * scaleFactor,
+      preventDefault: false,
     })
 
-    canvas.backgroundImage = img
-    canvas.renderAll()
+    layer.add(backgroundImage)
+    stage.width(canvasWidth)
+    stage.height(img.height * scaleFactor)
+    layer.batchDraw()
   }
 
   function initializeCanvas() {
-    canvas = new Canvas('canvas', {
+    stage = new Konva.Stage({
+      container: canvasContainer,
       width: canvasContainer.clientWidth,
       height: 600,
-      selection: false
     })
+    stage.on('touchstart', handleTouchStart)
+    stage.on('click', handleCanvasClick)
 
-    canvas.on('mouse:down', ({ e }: TEvent) => {
-      if (!fileInput.value) return
-      const { x, y } = canvas.getScenePoint(e)
+    layer = new Konva.Layer()
+    stage.add(layer)
 
-      if (currentPathType === 'reference') {
-        handleReferencePoint(x, y)
-      } else {
-        handleMeasurementPoint(x, y)
+    window.addEventListener('resize', handleResize)
+
+    return () => stage.destroy()
+  }
+
+  /**
+   * Measure the start of a tap so we don't add a point on a pan.
+   */
+  function handleTouchStart(_: KonvaEventObject<TouchEvent>) {
+    const pos = stage.getPointerPosition()
+    if (pos) touchStartPosition = pos
+  }
+
+  function handleCanvasClick(e: KonvaEventObject<MouseEvent>) {
+    if (!fileInput.value) return
+
+    const pos = stage.getPointerPosition()
+    if (!pos) return
+
+    if (e.type === 'tap') {
+      let distance = Math.hypot(pos.x - touchStartPosition.x, pos.y - touchStartPosition.y)
+      if (distance > 5) {
+        return
       }
-    })
+    }
 
-    window.addEventListener('resize', () => 
-      canvas.setDimensions({ width: canvasContainer.clientWidth })
-    )
-
-    return () => canvas.dispose()
+    if (currentPathType === 'reference') {
+      handleReferencePoint(pos.x, pos.y)
+    } else {
+      handleMeasurementPoint(pos.x, pos.y)
+    }
   }
 
   function handleReferencePoint(x: number, y: number) {
@@ -100,25 +128,28 @@
     }
 
     referencePoints.push({ x, y })
-    addCanvasObject(new Circle({
-      left: x,
-      top: y,
+
+    const circle = new Konva.Circle({
+      x,
+      y,
       radius: 5,
       fill: 'red',
-      originX: 'center',
-      originY: 'center',
-    }))
+    })
+    layer.add(circle)
 
     if (referencePoints.length === 2) {
       const [a, b] = referencePoints
-      addCanvasObject(new Line([a.x, a.y, b.x, b.y], {
+      const line = new Konva.Line({
+        points: [a.x, a.y, b.x, b.y],
         stroke: 'red',
         strokeWidth: 2,
-        selectable: false,
-        evented: false,
-      }))
+      })
+      layer.add(line)
+
       scale.factor = scale.referenceLength! / Math.hypot(b.x - a.x, b.y - a.y)
       currentPathType = 'measurement'
+
+      layer.batchDraw()
     }
   }
 
@@ -126,23 +157,25 @@
     if (!scale.factor) return
 
     measurementPoints.push({ x, y })
-    addCanvasObject(new Circle({
-      left: x,
-      top: y,
+
+    const circle = new Konva.Circle({
+      x,
+      y,
       radius: 5,
-      fill: 'blue',
-      originX: 'center',
-      originY: 'center',
-    }))
+      fill: 'blue'
+    })
+    layer.add(circle)
 
     if (measurementPoints.length > 1) {
       const prev = measurementPoints.at(-2)!
-      addCanvasObject(new Line([prev.x, prev.y, x, y], {
+      const line = new Konva.Line({
+        points: [prev.x, prev.y, x, y],
         stroke: 'blue',
         strokeWidth: 2,
-        selectable: false,
-        evented: false,
-      }))
+      })
+      layer.add(line)
+      layer.batchDraw()
+
       currentMeasurement.value = scale.factor
         ? (measurementPoints.slice(1).reduce((total, p, i) => 
             total + Math.hypot(p.x - measurementPoints[i].x, p.y - measurementPoints[i].y), 0
@@ -151,27 +184,24 @@
     }
   }
 
-  function addCanvasObject(obj: FabricObject) {
-    canvas.add(obj)
-    canvas.requestRenderAll()
-    return obj
-  }
-
   function clearCanvas() {
-    const bgImage = canvas.backgroundImage
-    canvas.clear()
-
-    if (bgImage) {
-      canvas.backgroundImage = bgImage
-      canvas.requestRenderAll()
-    }
-
     referencePoints = []
     measurementPoints = []
     currentPathType = 'reference'
     scale.factor = null
     scale.referenceLength = null
     currentMeasurement.value = null
+
+    layer.destroyChildren()
+    if (backgroundImage) {
+      layer.add(backgroundImage)
+    }
+    layer.batchDraw()
+  }
+
+  function handleResize() {
+    stage.width(canvasContainer.clientWidth)
+    layer.batchDraw()
   }
 
   async function loadImageFile(file: File) {
@@ -188,6 +218,7 @@
   }
   
   onMount(initializeCanvas)
+  onDestroy(() => stage?.destroy())
 
 </script>
 
@@ -262,6 +293,6 @@
   </div>
 </div>
 
-<div class="w-full my-4 border border-gray-300" bind:this={canvasContainer}>
+<div class="w-full my-4 border border-gray-300 touch-manipulation" bind:this={canvasContainer}>
   <canvas id="canvas"></canvas>
 </div>
