@@ -3,12 +3,12 @@
 </script>
 
 <div class="min-h-screen flex flex-col">
-  <header class="container mx-auto flex items-center justify-center gap-4 p-6 w-9/10 border-b">
+  <header class="mx-auto flex items-center justify-center gap-4 p-6 w-9/10 border-b">
     <img src="/slitherscale.png" alt="A snake on a scale" class="w-14 h-14">
     <h1 class="text-5xl font-bold">SlitherScale</h1>
   </header>
 
-  <main class="container mx-auto flex-grow pt-4 w-4/5">
+  <main class="mx-auto flex-grow pt-4 w-9/10">
     <slot />
   </main>
 
